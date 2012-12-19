@@ -1,0 +1,68 @@
+#!/bin/bash
+
+# ----------------------------------------
+#      This is spinmake
+# 
+#  Use it exactly like you use GNU MAKE.
+#  It will spin the sh*t out of 
+#                         your Makefile.
+#  ----------------------------------------
+
+# little adjustments might be necessary here
+OSX_WATCHER="kqwait" # from https://github.com/sschober/kqwait
+LINUX_WATCHER="inotifywait -q -q" # in inotify-tools
+
+OUTPUT_REPORT="lastexec.log"
+
+# The ugly grep & cut computes the set of dependency files.
+#
+# Inconditionnaly dry run Make with debug infos 
+# and user's command line arguments (targets and other make options).
+#
+# Override jobs count otherwise the output might be a mess.
+#
+# Look for "No need to remake " targets, 
+# as they likely are dependencies to specified targets.
+DEPS=`make -ndB $* -j 1 | grep "No need to remake target" | cut -d "\\\`" -f 2 | cut -d "'" -f 1`
+
+# The make command to be executed when a dependency has changed
+MAKE_COMMAND="make $*"
+
+# little feedback
+echo "watching files:" $DEPS
+echo "       command: $COMMAND"
+
+# mmh, infinite loop ...
+while [ 1 ]; do
+	
+	# wait for files events
+  case $OSTYPE in 
+  darwin*) 
+		$OSX_WATCHER $DEPS
+  ;;
+  linux*)
+		$LINUX_WATCHER $DEPS
+  ;;
+  *) 
+    echo OS not supported
+    exit 1
+  ;;
+  esac
+
+	# little feedback and
+	# run the make command silently
+	# keeps output in a file
+	echo -n "executing now ..."
+	$MAKE_COMMAND > $OUTPUT_REPORT 2>&1
+	
+	# execution report
+	if [ $? -ne 0 ]; then
+			echo " [FAIL]"
+			echo "**** OUTPUT REPORT ****"
+			cat $OUTPUT_REPORT
+	else
+			echo " [DONE]"
+	fi
+	
+	# now spin that sh*t
+done
